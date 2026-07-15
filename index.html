@@ -1,0 +1,213 @@
+<!DOCTYPE html>
+<html lang="es">
+  <head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>MiChan | Comunidad Anonima</title>
+    <link rel="stylesheet" href="style.css">
+    <script src="script.js" defer></script>
+  </head>
+  <body class="theme-green minimal-layout win11-theme">
+    <!-- Encabezado principal con navegación global -->
+    <header id="site-header" class="site-header theme-header elevated-panel">
+      <div class="header-brand">
+        <a href="#" class="logo logo-brand" aria-label="MiChan">MiChan</a>
+      </div>
+      <div class="header-user">
+        <span id="user-status" class="user-status">Desconectado</span>
+      </div>
+      <div class="header-search">
+        <label for="search-input" class="visually-hidden">Buscar hilos</label>
+        <input id="search-input" type="search" name="search" placeholder="Buscar en MiChan">
+      </div>
+      <button type="button" id="menu-toggle" class="button button-icon menu-toggle" aria-label="Abrir menú">
+        ☰
+      </button>
+      <nav class="header-navigation" aria-label="Navegación principal">
+        <button type="button" id="header-create-thread-button" class="button button-primary">Crear hilo</button>
+        <button type="button" id="profile-button" class="button button-icon">Perfil</button>
+        <button type="button" id="notifications-button" class="button button-icon">Notificaciones <span id="notif-badge" class="notif-badge hidden">0</span></button>
+      </nav>
+    </header>
+
+    <main id="main-content">
+      <!-- Pantalla de lanzamiento inicial con registro/login/invitado -->
+      <section id="launch-screen" class="launch-screen">
+        <div class="welcome-copy showcase-panel">
+          <h1>Bienvenido a MiChan</h1>
+          <p>Tu punto de partida para registrarte, iniciar sesión o explorar la comunidad como invitado.</p>
+          <div class="welcome-actions action-group">
+            <button type="button" id="guest-entrance-button" class="button button-large button-soft">Entrar como invitado</button>
+            <button type="button" id="sign-in-button" class="button button-large button-primary">Iniciar sesión</button>
+            <button type="button" id="create-account-button" class="button button-secondary">Crear cuenta</button>
+          </div>
+        </div>
+
+        <div class="launch-grid">
+          <article id="registration-article" class="card card-form soft-card">
+            <h2>Registro</h2>
+            <p class="subtitle">Crea tu cuenta para participar activamente en MiChan.</p>
+            <form id="registration-form" class="form" action="#" method="post">
+              <div class="form-group">
+                <label for="username">Nombre de usuario</label>
+                <input id="username" name="username" type="text" autocomplete="username" required>
+              </div>
+              <div class="form-group">
+                <label for="password">Contraseña</label>
+                <input id="password" name="password" type="password" autocomplete="new-password" required>
+              </div>
+              <div class="form-group">
+                <label for="confirm-password">Confirmar contraseña</label>
+                <input id="confirm-password" name="confirm-password" type="password" autocomplete="new-password" required>
+              </div>
+              <div class="form-group">
+                <label for="course-select">Curso</label>
+                <select id="course-select" name="course" required>
+                  <option value="" disabled selected>Selecciona tu curso</option>
+                  <option value="8a">8.º A</option>
+                  <option value="8b">8.º B</option>
+                  <option value="9a">9.º A</option>
+                  <option value="9b">9.º B</option>
+                  <option value="10a">10.º A</option>
+                  <option value="10b">10.º B</option>
+                  <option value="1ba">1.º Bachillerato A</option>
+                  <option value="1bb">1.º Bachillerato B</option>
+                  <option value="2ba">2.º Bachillerato A</option>
+                  <option value="2bb">2.º Bachillerato B</option>
+                  <option value="3ba">3.º Bachillerato A</option>
+                  <option value="3bb">3.º Bachillerato B</option>
+                </select>
+              </div>
+              <div class="form-group form-group-checkbox">
+                <input id="public-course" name="public-course" type="checkbox">
+                <label for="public-course">Mostrar mi curso públicamente</label>
+              </div>
+              <div class="form-actions">
+                <button type="submit" class="button button-primary">Crear cuenta</button>
+              </div>
+            </form>
+          </article>
+
+          <article id="login-article" class="card card-form soft-card hidden" aria-hidden="true">
+            <h2>Iniciar sesión</h2>
+            <p class="subtitle">Accede con tu nombre de usuario y contraseña.</p>
+            <form id="login-form" class="form" action="#" method="post">
+              <div class="form-group">
+                <label for="login-username">Nombre de usuario</label>
+                <input id="login-username" name="login-username" type="text" autocomplete="username">
+              </div>
+              <div class="form-group">
+                <label for="login-password">Contraseña</label>
+                <input id="login-password" name="login-password" type="password" autocomplete="current-password">
+              </div>
+              <div class="form-actions">
+                <button type="submit" class="button button-primary">Ingresar</button>
+              </div>
+            </form>
+          </article>
+        </div>
+      </section>
+
+      <!-- Dashboard principal oculto hasta que el usuario avance -->
+      <section id="dashboard-screen" class="dashboard-screen hidden">
+        <section class="dashboard-hero showcase-panel">
+          <div>
+            <h2 id="dashboard-title">MiChan</h2>
+            <p id="dashboard-description">Explora hilos, publica ideas y mantente conectado con tu colegio.</p>
+          </div>
+          <div class="hero-actions action-group">
+            <button type="button" id="open-thread-button" class="button button-primary">Crear hilo</button>
+            <button type="button" id="visit-forum-button" class="button button-secondary">Ir al foro</button>
+          </div>
+        </section>
+
+        <div class="main-grid">
+          <section class="content-panel glass-panel">
+            <article id="thread-creation-article" class="card card-form hidden" aria-hidden="true">
+              <h2>Crear hilo</h2>
+              <form id="thread-form" class="form" action="#" method="post">
+                <div class="form-group">
+                  <label for="thread-author">Nombre (opcional)</label>
+                  <input id="thread-author" name="thread-author" type="text" placeholder="Tu nombre o alias">
+                </div>
+                <div class="form-group">
+                  <label for="thread-title">Título</label>
+                  <input id="thread-title" name="thread-title" type="text" required>
+                </div>
+                <div class="form-group">
+                  <label for="thread-content">Contenido</label>
+                  <textarea id="thread-content" name="thread-content" rows="6" required></textarea>
+                </div>
+                <div class="form-group">
+                  <label for="thread-tags">Etiquetas (opcional)</label>
+                  <input id="thread-tags" name="thread-tags" type="text" placeholder="Ej. noticias, eventos, discusión">
+                </div>
+                <div class="form-actions">
+                  <button type="submit" class="button button-primary">Publicar</button>
+                </div>
+              </form>
+            </article>
+          </section>
+
+          <aside class="sidebar-panel glass-panel">
+            <section id="stats-panel" class="card card-stats soft-card">
+              <h2>Estadísticas</h2>
+              <div class="stats-grid">
+                <article class="stat-card">
+                  <span class="stat-value" id="user-count">0</span>
+                  <p class="stat-label">Número de usuarios</p>
+                </article>
+                <article class="stat-card">
+                  <span class="stat-value" id="thread-count">0</span>
+                  <p class="stat-label">Número de hilos</p>
+                </article>
+                <article class="stat-card">
+                  <span class="stat-value" id="online-users">0</span>
+                  <p class="stat-label">Usuarios conectados</p>
+                </article>
+                <article class="stat-card">
+                  <span class="stat-value" id="recent-activity">Reciente</span>
+                  <p class="stat-label">Última actividad</p>
+                </article>
+              </div>
+            </section>
+
+            <section id="quick-access" class="card card-actions soft-card">
+              <h2>Accesos rápidos</h2>
+              <div class="action-list">
+                <button type="button" id="chat-access-button" class="button button-secondary">💬 Mensajes</button>
+                <button type="button" id="profile-access-button" class="button button-secondary">Perfil</button>
+                <button type="button" id="notifications-access-button" class="button button-secondary">Notificaciones</button>
+              </div>
+            </section>
+          </aside>
+        </div>
+
+        <section id="threads-section" class="threads-section elevated-panel">
+          <header class="section-header">
+            <h2>Hilos</h2>
+          </header>
+          <div id="threads-container" class="threads-container">
+            <div class="threads-placeholder">
+              Aún no hay hilos activos. Crea tu primer hilo para iniciar la conversación.
+            </div>
+          </div>
+        </section>
+      </section>
+    </main>
+
+    <!-- Pie de página con información de MiChan -->
+    <footer id="site-footer" class="site-footer theme-footer">
+      <p>MiChan</p>
+      <p>Una comunidad creada por ???? para estudiantes.</p>
+    </footer>
+
+    <div id="panel-overlay" class="panel-overlay hidden" aria-hidden="true">
+      <div class="panel-card" role="dialog" aria-modal="true" aria-labelledby="panel-title">
+        <button type="button" id="panel-close-button" class="panel-close" aria-label="Cerrar panel">×</button>
+        <h3 id="panel-title">Contenido</h3>
+        <div id="panel-content" class="panel-content"></div>
+      </div>
+    </div>
+  </body>
+</html>
