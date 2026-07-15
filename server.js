@@ -23,6 +23,7 @@ const app = express();
 const server = http.createServer(app);
 const port = process.env.PORT || 3000;
 
+app.set('trust proxy', 1);
 app.use(helmet());
 app.use(cors({ origin: true, credentials: true }));
 app.use(cookieParser());
@@ -41,6 +42,10 @@ app.use('/api/chat', chatRoutes);
 app.use('/api/events', eventRoutes);
 app.use('/api/reports', reportRoutes);
 app.use('/api/uploads', uploadRoutes);
+
+app.get('/health', (req, res) => {
+  res.status(200).json({ status: 'ok' });
+});
 
 app.get('*', (req, res, next) => {
   if (req.path.startsWith('/api')) return next();

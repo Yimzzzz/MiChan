@@ -6,14 +6,18 @@ const { createSession } = require('../models/sessions');
 function createSessionForUser(user, res) {
   const token = crypto.randomBytes(32).toString('hex');
   const expiresAt = new Date(Date.now() + 1000 * 60 * 60 * 24 * 7).toISOString();
+  const isProduction = process.env.NODE_ENV === 'production';
+
   createSession(user.id, token, expiresAt, (err) => {
     if (err) {
       return res.status(500).json({ error: 'session creation failed' });
     }
     res.cookie('michan_session', token, {
       httpOnly: true,
-      sameSite: 'lax',
+      sameSite: isProduction ? 'none' : 'lax',
+      secure: isProduction,
       maxAge: 1000 * 60 * 60 * 24 * 7,
+      path: '/',
     });
     res.json({ id: user.id, username: user.username, displayName: user.displayName, course: user.course, role: user.role });
   });
