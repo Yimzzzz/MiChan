@@ -1,8 +1,8 @@
 const { db } = require('../database');
 
 function getAllThreads(sort = 'recent', cb) {
-  const sortColumn = sort === 'popular' ? 'likes' : sort === 'commented' ? 'replies' : 'created_at';
-  const direction = sort === 'popular' || sort === 'commented' ? 'DESC' : 'DESC';
+  const sortColumn = sort === 'popular' ? 'likes' : sort === 'commented' ? 'replies' : 'threads.created_at';
+  const direction = 'DESC';
   const sql = `SELECT threads.id, threads.author, threads.title, threads.content, threads.tags, threads.created_at, threads.image_url, COUNT(DISTINCT likes.id) AS likes, COUNT(DISTINCT replies.id) AS replies FROM threads LEFT JOIN likes ON likes.thread_id = threads.id LEFT JOIN replies ON replies.thread_id = threads.id GROUP BY threads.id ORDER BY ${sortColumn} ${direction}`;
   db.all(sql, [], cb);
 }

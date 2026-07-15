@@ -20,7 +20,7 @@ function createReply({ threadId, author, content, image, createdAt }, cb) {
         author,
         content,
         image,
-        created_at: createdAt,
+        createdAt,
       });
     }
   );

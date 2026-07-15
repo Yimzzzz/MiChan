@@ -21,6 +21,7 @@ function listThreads(req, res) {
         excerpt: (r.content || '').slice(0, 220),
         content: r.content,
         tags,
+        imageUrl: r.image_url || '',
         createdAt: r.created_at,
         likes: r.likes || 0,
         replies: r.replies || 0,

@@ -54,7 +54,9 @@ const mockStats = {
 
 // No sample threads by default — start with an empty list.
 let currentThreads = [];
-
+let currentConversations = [];
+let activeConversation = null;
+let chatSearchTimer = null;
 let notificationsLocal = [];
 
 function showElement(element, visible) {
@@ -109,9 +111,10 @@ function renderThreads(threads) {
         <article class="thread-card" data-index="${index}">
           <div class="thread-meta">
             <span class="thread-author">${thread.author}</span>
-            <span class="thread-tags">${thread.tags.map((tag) => `<strong>#${tag}</strong>`).join(' ')}</span>
+            <span class="thread-tags">${Array.isArray(thread.tags) ? thread.tags.map((tag) => `<strong>#${tag}</strong>`).join(' ') : ''}</span>
           </div>
           <h3>${thread.title}</h3>
+          ${thread.imageUrl ? `<div class="thread-image"><img src="${thread.imageUrl}" alt="Imagen del hilo" /></div>` : ''}
           <p>${thread.excerpt}</p>
           <button type="button" class="button button-secondary thread-view-button">Ver hilo</button>
         </article>
@@ -140,6 +143,283 @@ function openPanel(title, content) {
 function closePanel() {
   showElement(panelOverlay, false);
   panelOverlay.setAttribute('aria-hidden', 'true');
+}
+
+async function fetchConversationPartnerNames(conversations) {
+  const ids = [...new Set(conversations.map((c) => c.partnerId).filter(Boolean))];
+  const names = {};
+  await Promise.all(
+    ids.map(async (partnerId) => {
+      try {
+        const res = await fetch(`/api/users/${partnerId}`);
+        if (!res.ok) throw new Error('no partner');
+        const partner = await res.json();
+        names[partnerId] = partner.displayName || partner.username || `Usuario #${partnerId}`;
+      } catch (err) {
+        names[partnerId] = `Usuario #${partnerId}`;
+      }
+    })
+  );
+  return names;
+}
+
+async function fetchConversations() {
+  const container = document.getElementById('chat-conversations-list');
+  if (container) container.innerHTML = 'Cargando conversaciones...';
+  try {
+    const res = await fetch('/api/chat/conversations');
+    if (!res.ok) throw new Error('No se pudo cargar conversaciones');
+    currentConversations = await res.json();
+    const names = await fetchConversationPartnerNames(currentConversations);
+    currentConversations = currentConversations.map((conversation) => ({
+      ...conversation,
+      partnerName: names[conversation.partnerId] || `Usuario #${conversation.partnerId}`,
+    }));
+    renderChatConversations();
+    if (!activeConversation && currentConversations.length) {
+      openConversation(currentConversations[0]);
+    }
+  } catch (err) {
+    console.error('fetchConversations', err);
+    if (container) container.innerHTML = '<p class="threads-placeholder">No se pudieron cargar las conversaciones.</p>';
+  }
+}
+
+function renderChatConversations() {
+  const container = document.getElementById('chat-conversations-list');
+  if (!container) return;
+  if (!currentConversations.length) {
+    container.innerHTML = '<p class="threads-placeholder">Aún no tienes conversaciones. Busca un usuario para comenzar.</p>';
+    return;
+  }
+  container.innerHTML = currentConversations
+    .map(
+      (conversation) => `
+      <button type="button" class="chat-conversation-item ${activeConversation && activeConversation.id === conversation.id ? 'active' : ''}" data-id="${conversation.id}">
+        <strong>${conversation.partnerName}</strong>
+        <span>${conversation.createdAt ? new Date(conversation.createdAt).toLocaleString() : ''}</span>
+      </button>
+    `
+    )
+    .join('');
+  container.querySelectorAll('.chat-conversation-item').forEach((button) => {
+    button.addEventListener('click', () => {
+      const conversation = currentConversations.find((item) => item.id === Number(button.dataset.id));
+      if (conversation) openConversation(conversation);
+    });
+  });
+}
+
+function renderChatMessages(messages) {
+  const list = document.getElementById('chat-messages-list');
+  if (!list) return;
+  if (!messages || !messages.length) {
+    list.innerHTML = '<div class="threads-placeholder">No hay mensajes todavía. Envía el primero.</div>';
+    return;
+  }
+  list.innerHTML = messages
+    .map(
+      (msg) => `
+      <div class="chat-message ${msg.senderId === currentUser?.id ? 'chat-message-sent' : 'chat-message-received'}">
+        <div class="chat-message-content">${msg.content}</div>
+        <div class="chat-message-meta">${msg.senderId === currentUser?.id ? 'Tú' : 'Otro'} • ${msg.createdAt ? new Date(msg.createdAt).toLocaleString() : ''}</div>
+      </div>
+    `
+    )
+    .join('');
+  list.scrollTop = list.scrollHeight;
+}
+
+async function fetchConversationMessages(conversationId) {
+  try {
+    const res = await fetch(`/api/chat/conversations/${conversationId}/messages`);
+    if (!res.ok) throw new Error('No se pudieron cargar los mensajes');
+    const data = await res.json();
+    return Array.isArray(data) ? data : [];
+  } catch (err) {
+    console.error('fetchConversationMessages', err);
+    return [];
+  }
+}
+
+async function openConversation(conversation) {
+  activeConversation = conversation;
+  const header = document.getElementById('chat-window-header');
+  const form = document.getElementById('chat-message-form');
+  const submitBtn = form?.querySelector('button[type="submit"]');
+  if (header) header.textContent = `Conversación con ${conversation.partnerName}`;
+  if (form) form.classList.remove('hidden');
+  if (submitBtn) submitBtn.disabled = false;
+  await fetchAndRenderMessages(conversation.id);
+  renderChatConversations();
+}
+
+async function fetchAndRenderMessages(conversationId) {
+  const messages = await fetchConversationMessages(conversationId);
+  renderChatMessages(messages);
+}
+
+function renderChatSearchResults(users) {
+  const results = document.getElementById('chat-search-results');
+  if (!results) return;
+  if (!users || !users.length) {
+    results.innerHTML = '<p class="threads-placeholder">No se encontraron usuarios.</p>';
+    return;
+  }
+  results.innerHTML = users
+    .map(
+      (user) => `
+      <div class="chat-search-result">
+        <span>${user.displayName || user.username}</span>
+        <button type="button" class="button button-secondary chat-start-button" data-id="${user.id}">Conversar</button>
+      </div>
+    `
+    )
+    .join('');
+  results.querySelectorAll('.chat-start-button').forEach((button) => {
+    button.addEventListener('click', () => {
+      const partnerId = Number(button.dataset.id);
+      if (partnerId) startChatWith(partnerId);
+    });
+  });
+}
+
+async function searchChatUsers(query) {
+  const results = document.getElementById('chat-search-results');
+  if (!results) return;
+  if (!query || query.length < 2) {
+    results.innerHTML = '<p class="threads-placeholder">Busca por nombre de usuario o alias.</p>';
+    return;
+  }
+  try {
+    const res = await fetch(`/api/chat/users?q=${encodeURIComponent(query)}`);
+    if (!res.ok) throw new Error('No se pudieron buscar usuarios');
+    const data = await res.json();
+    renderChatSearchResults(Array.isArray(data) ? data : []);
+  } catch (err) {
+    console.error('searchChatUsers', err);
+    results.innerHTML = '<p class="threads-placeholder">Error al buscar usuarios.</p>';
+  }
+}
+
+async function startChatWith(partnerId) {
+  if (!partnerId || partnerId === currentUser?.id) {
+    showToast('Selecciona un usuario válido para iniciar la conversación.', 'error');
+    return;
+  }
+  try {
+    const res = await fetch('/api/chat/conversations', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ partnerId }),
+    });
+    if (!res.ok) {
+      const data = await res.json().catch(() => ({}));
+      throw new Error(data.error || 'No se pudo iniciar la conversación');
+    }
+    const conversation = await res.json();
+    await fetchConversations();
+    if (conversation && conversation.id) {
+      const matched = currentConversations.find((item) => item.id === conversation.id);
+      if (matched) {
+        openConversation(matched);
+      }
+    }
+  } catch (err) {
+    console.error('startChatWith', err);
+    showToast(err.message || 'No se pudo iniciar la conversación.', 'error');
+  }
+}
+
+async function sendChatMessage(event) {
+  event.preventDefault();
+  if (!activeConversation) return;
+  const input = document.getElementById('chat-message-input');
+  if (!input) return;
+  const content = input.value.trim();
+  if (!content) {
+    showToast('Escribe un mensaje antes de enviarlo.', 'error');
+    return;
+  }
+  const button = event.target.querySelector('button[type="submit"]');
+  if (button) button.disabled = true;
+  try {
+    const res = await fetch(`/api/chat/conversations/${activeConversation.id}/messages`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ content }),
+    });
+    if (!res.ok) {
+      const data = await res.json().catch(() => ({}));
+      throw new Error(data.error || 'No se pudo enviar el mensaje');
+    }
+    input.value = '';
+    await fetchAndRenderMessages(activeConversation.id);
+  } catch (err) {
+    console.error('sendChatMessage', err);
+    showToast(err.message || 'Error al enviar el mensaje.', 'error');
+  } finally {
+    if (button) button.disabled = false;
+  }
+}
+
+function attachChatPanelListeners() {
+  const searchInput = document.getElementById('chat-search-input');
+  const refreshButton = document.getElementById('chat-refresh-button');
+  const chatForm = document.getElementById('chat-message-form');
+
+  if (searchInput) {
+    searchInput.addEventListener('input', (event) => {
+      const query = event.target.value.trim();
+      if (chatSearchTimer) clearTimeout(chatSearchTimer);
+      chatSearchTimer = setTimeout(() => searchChatUsers(query), 250);
+    });
+  }
+
+  if (refreshButton) {
+    refreshButton.addEventListener('click', fetchConversations);
+  }
+
+  if (chatForm) {
+    chatForm.addEventListener('submit', sendChatMessage);
+  }
+}
+
+async function openChatPanel() {
+  if (!currentUser) {
+    openPanel('Chat privado', '<p>Inicia sesión para usar mensajes privados. Regístrate o entra con tu cuenta para comenzar a conversar.</p>');
+    return;
+  }
+
+  openPanel(
+    'Chat privado',
+    `
+      <div class="chat-panel">
+        <aside class="chat-sidebar">
+          <div class="chat-sidebar-search">
+            <input id="chat-search-input" type="search" placeholder="Buscar usuario" aria-label="Buscar usuario" />
+          </div>
+          <div id="chat-search-results" class="chat-search-results"><p class="threads-placeholder">Busca por nombre para iniciar una conversación.</p></div>
+          <div class="chat-sidebar-heading">
+            <h4>Conversaciones</h4>
+            <button type="button" id="chat-refresh-button" class="button button-secondary">Actualizar</button>
+          </div>
+          <div id="chat-conversations-list" class="chat-conversations-list">Cargando conversaciones...</div>
+        </aside>
+        <section class="chat-window">
+          <div id="chat-window-header" class="chat-window-header">Selecciona una conversación</div>
+          <div id="chat-messages-list" class="chat-messages-list"><p class="threads-placeholder">Selecciona un chat para ver los mensajes.</p></div>
+          <form id="chat-message-form" class="chat-message-form hidden">
+            <input id="chat-message-input" type="text" placeholder="Escribe un mensaje..." autocomplete="off" />
+            <button type="submit" class="button button-primary">Enviar</button>
+          </form>
+        </section>
+      </div>
+    `
+  );
+
+  attachChatPanelListeners();
+  await fetchConversations();
 }
 
 function filterThreads(query) {
@@ -182,7 +462,7 @@ function renderReplies(replies, container) {
         .map(
           (r) => `
         <article class="reply-card">
-          <div class="reply-meta"><strong>${r.author}</strong> <span class="reply-time">${new Date(r.created_at).toLocaleString()}</span></div>
+          <div class="reply-meta"><strong>${r.author}</strong> <span class="reply-time">${new Date(r.createdAt).toLocaleString()}</span></div>
           <p class="reply-content">${r.content}</p>
           ${r.image ? `<div class="reply-image"><img src="${r.image}" alt="Adjunto" /></div>` : ''}
         </article>
@@ -201,6 +481,7 @@ async function openThreadDetail(thread) {
       <h3>${thread.title}</h3>
       <div class="thread-by"><strong>${thread.author}</strong> • <span class="thread-time">${thread.createdAt ? new Date(thread.createdAt).toLocaleString() : ''}</span></div>
       <div class="thread-content">${thread.content}</div>
+      ${thread.imageUrl ? `<div class="thread-image thread-detail-image"><img src="${thread.imageUrl}" alt="Imagen del hilo" /></div>` : ''}
       <div class="panel-tags">${thread.tags.map((t) => `<span>#${t}</span>`).join(' ')}</div>
       <hr />
       <section id="replies-section">
@@ -426,13 +707,33 @@ async function handleLoginSubmit(event) {
   }
 }
 
+async function uploadThreadImageFile(file) {
+  const formData = new FormData();
+  formData.append('image', file);
+
+  const res = await fetch('/api/uploads', {
+    method: 'POST',
+    body: formData,
+    credentials: 'same-origin',
+  });
+
+  if (!res.ok) {
+    const errorData = await res.json().catch(() => ({}));
+    throw new Error(errorData.error || 'No se pudo subir la imagen');
+  }
+
+  const data = await res.json();
+  return data.url;
+}
+
 async function handleThreadSubmit(event) {
   event.preventDefault();
-  // Gather form values
   const author = threadForm['thread-author'].value || 'Anónimo';
   const title = threadForm['thread-title'].value && threadForm['thread-title'].value.trim();
   const content = threadForm['thread-content'].value && threadForm['thread-content'].value.trim();
   const tagsRaw = threadForm['thread-tags'].value || '';
+  const imageUrl = threadForm['thread-image'].value.trim();
+  const imageFile = threadForm['thread-file']?.files?.[0] || null;
 
   if (!title || !content) {
     showToast('Por favor completa el título y el contenido del hilo.', 'error');
@@ -443,12 +744,17 @@ async function handleThreadSubmit(event) {
   if (submitBtn) submitBtn.disabled = true;
 
   const tags = tagsRaw.split(',').map((t) => t.trim()).filter(Boolean);
+  let finalImageUrl = imageUrl;
 
   try {
+    if (imageFile) {
+      finalImageUrl = await uploadThreadImageFile(imageFile);
+    }
+
     const res = await fetch('/api/threads', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ author, title, content, tags }),
+      body: JSON.stringify({ author, title, content, tags, imageUrl: finalImageUrl }),
     });
 
     if (!res.ok) {
@@ -461,10 +767,8 @@ async function handleThreadSubmit(event) {
     }
 
     const created = await res.json();
-    // Prepend to current threads and re-render
     currentThreads.unshift(created);
     renderThreads(currentThreads);
-    // Update stats
     fetchStats();
     showToast('Hilo publicado correctamente.', 'info');
     threadForm.reset();
@@ -492,10 +796,12 @@ function openPlaceholder(feature) {
   if (feature === 'Notificaciones') {
     return openNotificationsPanel();
   }
+  if (feature === 'Chat privado') {
+    return openChatPanel();
+  }
 
   const contentMap = {
     Foro: '<p>Bienvenido al foro. Aquí encontrarás conversaciones activas, debates y eventos de la comunidad.</p>',
-    'Chat privado': '<p>Esta área mostrará tus mensajes privados. Conecta con otros miembros y organiza conversaciones privadas.</p>',
   };
 
   openPanel(feature, contentMap[feature] || '<p>Funcionalidad en construcción.</p>');

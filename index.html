@@ -140,6 +140,12 @@
                   <textarea id="thread-content" name="thread-content" rows="6" required></textarea>
                 </div>
                 <div class="form-group">
+                  <label for="thread-image">Imagen (URL o archivo, opcional)</label>
+                  <input id="thread-image" name="thread-image" type="url" placeholder="https://..." />
+                  <input id="thread-file" name="thread-file" type="file" accept="image/*" />
+                  <p class="form-note">Si subes un archivo, se cargará al servidor y se usará en el hilo.</p>
+                </div>
+                <div class="form-group">
                   <label for="thread-tags">Etiquetas (opcional)</label>
                   <input id="thread-tags" name="thread-tags" type="text" placeholder="Ej. noticias, eventos, discusión">
                 </div>
