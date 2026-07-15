@@ -15,6 +15,7 @@ const signInButton = document.getElementById('sign-in-button');
 const createAccountButton = document.getElementById('create-account-button');
 const chatAccessButton = document.getElementById('chat-access-button');
 const profileButton = document.getElementById('profile-button');
+const logoutButton = document.getElementById('logout-button');
 const notificationsButton = document.getElementById('notifications-button');
 const profileAccessButton = document.getElementById('profile-access-button');
 const notificationsAccessButton = document.getElementById('notifications-access-button');
@@ -41,6 +42,8 @@ const state = {
   threadFormOpen: false,
   currentScreen: 'launch',
 };
+
+let currentUser = null;
 
 const mockStats = {
   users: 0,
@@ -347,14 +350,15 @@ function enterDashboard(mode, options = {}) {
   renderThreads(currentThreads);
 }
 
-function handleRegistrationSubmit(event) {
+async function handleRegistrationSubmit(event) {
   event.preventDefault();
   const username = registrationForm.username.value.trim();
   const password = registrationForm.querySelector('#password').value;
   const confirmPassword = registrationForm.querySelector('#confirm-password').value;
+  const course = registrationForm.querySelector('#course-select').value;
   const submitBtn = registrationForm.querySelector('button[type="submit"]');
 
-  if (!username || !password) {
+  if (!username || !password || !course) {
     showToast('Completa todos los campos del registro.', 'error');
     return;
   }
@@ -368,15 +372,18 @@ function handleRegistrationSubmit(event) {
     const res = await fetch('/api/register', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ username, password }),
+      credentials: 'same-origin',
+      body: JSON.stringify({ username, password, course }),
     });
     if (!res.ok) {
       const j = await res.json().catch(() => ({}));
       throw new Error(j.error || 'Error en el registro');
     }
     const user = await res.json();
+    currentUser = user;
     showToast('Registro correcto. Bienvenido ' + user.username, 'info');
-    enterDashboard('register', { username: user.username });
+    updateUserStatus(true);
+    enterDashboard('register', { username: user.displayName || user.username });
   } catch (err) {
     console.error(err);
     showToast(err.message || 'No se pudo registrar.', 'error');
@@ -385,7 +392,7 @@ function handleRegistrationSubmit(event) {
   }
 }
 
-function handleLoginSubmit(event) {
+async function handleLoginSubmit(event) {
   event.preventDefault();
   const username = loginForm['login-username'].value.trim();
   const password = loginForm['login-password'].value;
@@ -401,14 +408,16 @@ function handleLoginSubmit(event) {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ username, password }),
+      credentials: 'same-origin',
     });
     if (!res.ok) {
       const j = await res.json().catch(() => ({}));
       throw new Error(j.error || 'Credenciales inválidas');
     }
     const user = await res.json();
+    currentUser = user;
     showToast('Inicio de sesión correcto. Hola ' + user.username, 'info');
-    enterDashboard('login', { username: user.username });
+    enterDashboard('login', { username: user.displayName || user.username });
   } catch (err) {
     console.error(err);
     showToast(err.message || 'No se pudo iniciar sesión.', 'error');
@@ -417,7 +426,7 @@ function handleLoginSubmit(event) {
   }
 }
 
-function handleThreadSubmit(event) {
+async function handleThreadSubmit(event) {
   event.preventDefault();
   // Gather form values
   const author = threadForm['thread-author'].value || 'Anónimo';
@@ -477,17 +486,19 @@ function toggleThreadForm() {
 }
 
 function openPlaceholder(feature) {
+  if (feature === 'Perfil') {
+    return openProfilePanel();
+  }
+  if (feature === 'Notificaciones') {
+    return openNotificationsPanel();
+  }
+
   const contentMap = {
     Foro: '<p>Bienvenido al foro. Aquí encontrarás conversaciones activas, debates y eventos de la comunidad.</p>',
     'Chat privado': '<p>Esta área mostrará tus mensajes privados. Conecta con otros miembros y organiza conversaciones privadas.</p>',
-    Perfil: '<p>Tu perfil mostrará tu información, actividad reciente y las insignias que ganes en MiChan.</p>',
-    Notificaciones: '<div id="notifications-list"></div>',
   };
 
   openPanel(feature, contentMap[feature] || '<p>Funcionalidad en construcción.</p>');
-  if (feature === 'Notificaciones') {
-    renderNotifications();
-  }
 }
 
 // Open a small prompt to choose a nickname for guest access
@@ -551,6 +562,7 @@ function initEvents() {
   loginForm.addEventListener('submit', handleLoginSubmit);
   threadForm.addEventListener('submit', handleThreadSubmit);
   guestEntranceButton.addEventListener('click', () => openGuestPrompt());
+  if (logoutButton) logoutButton.addEventListener('click', handleLogout);
   if (headerGuestButton) headerGuestButton.addEventListener('click', () => openGuestPrompt());
   signInButton.addEventListener('click', () => setLaunchSection('login'));
   createAccountButton.addEventListener('click', () => setLaunchSection('register'));
@@ -655,25 +667,180 @@ function renderNotifications() {
 
 // old clearNotifications removed; use clearNotifications() that calls the API (defined earlier)
 
+async function loadCurrentUser() {
+  try {
+    const res = await fetch('/api/auth/me', { credentials: 'same-origin' });
+    if (!res.ok) {
+      currentUser = null;
+      return;
+    }
+    currentUser = await res.json();
+  } catch (err) {
+    console.error('loadCurrentUser', err);
+    currentUser = null;
+  }
+}
+
+function resetSession() {
+  currentUser = null;
+  updateUserStatus(false);
+  showElement(logoutButton, false);
+}
+
+function showProfileSection(profile) {
+  const publicCourse = profile.publicCourse ? `Curso público: ${profile.course}` : `Curso privado: ${profile.course}`;
+  const avatar = profile.avatarUrl ? `<img src="${profile.avatarUrl}" alt="Avatar de ${profile.displayName}" class="profile-avatar" />` : '<div class="profile-avatar profile-avatar-placeholder">?</div>';
+  const editable = profile.id === currentUser?.id;
+  return `
+    <article class="card card-form soft-card profile-panel">
+      <div class="profile-header">
+        ${avatar}
+        <div>
+          <h2>${profile.displayName || profile.username}</h2>
+          <p>${profile.username}</p>
+          <p>${publicCourse}</p>
+          <p>Miembro desde ${new Date(profile.createdAt).toLocaleDateString()}</p>
+        </div>
+      </div>
+      <p>${profile.bio || 'Sin biografía todavía.'}</p>
+      ${editable ? `
+        <form id="profile-edit-form" class="form profile-edit-form">
+          <div class="form-group">
+            <label for="profile-displayName">Nombre visible</label>
+            <input id="profile-displayName" name="displayName" type="text" value="${profile.displayName || ''}" required />
+          </div>
+          <div class="form-group">
+            <label for="profile-course">Curso</label>
+            <input id="profile-course" name="course" type="text" value="${profile.course || ''}" required />
+          </div>
+          <div class="form-group">
+            <label for="profile-bio">Biografía</label>
+            <textarea id="profile-bio" name="bio" rows="4">${profile.bio || ''}</textarea>
+          </div>
+          <div class="form-actions">
+            <button type="submit" class="button button-primary">Guardar perfil</button>
+          </div>
+        </form>
+      ` : ''}
+    </article>
+  `;
+}
+
+async function openProfilePanel() {
+  if (!currentUser) {
+    openPanel('Perfil', '<p>Accede para ver tu perfil y editar tu información.</p>');
+    return;
+  }
+
+  try {
+    const res = await fetch(`/api/users/${currentUser.id}`, { credentials: 'same-origin' });
+    if (!res.ok) throw new Error('Perfil no disponible');
+    const profile = await res.json();
+    openPanel('Perfil', showProfileSection(profile));
+
+    const editForm = document.getElementById('profile-edit-form');
+    if (editForm) {
+      editForm.addEventListener('submit', async (event) => {
+        event.preventDefault();
+        const submitBtn = editForm.querySelector('button[type="submit"]');
+        if (submitBtn) submitBtn.disabled = true;
+        try {
+          const body = {
+            displayName: editForm['displayName'].value.trim(),
+            course: editForm['course'].value.trim(),
+            bio: editForm['bio'].value.trim(),
+            avatarUrl: profile.avatarUrl || '',
+          };
+          const saveRes = await fetch(`/api/users/${currentUser.id}`, {
+            method: 'PUT',
+            credentials: 'same-origin',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify(body),
+          });
+          if (!saveRes.ok) {
+            const errorJson = await saveRes.json().catch(() => ({}));
+            throw new Error(errorJson.error || 'No se pudo guardar el perfil');
+          }
+          const updated = await saveRes.json();
+          currentUser = { ...currentUser, displayName: updated.displayName, course: updated.course };
+          showToast('Perfil actualizado.', 'info');
+          openProfilePanel();
+        } catch (err) {
+          console.error(err);
+          showToast(err.message || 'Error al guardar perfil.', 'error');
+        } finally {
+          if (submitBtn) submitBtn.disabled = false;
+        }
+      });
+    }
+  } catch (err) {
+    console.error('openProfilePanel', err);
+    openPanel('Perfil', '<p>No se pudo cargar el perfil.</p>');
+  }
+}
+
+async function openNotificationsPanel() {
+  openPanel('Notificaciones', '<div id="notifications-list">Cargando notificaciones...</div>');
+  await fetchNotifications();
+  const content = document.getElementById('panel-content');
+  if (!content) return;
+  const buttonHtml = currentUser
+    ? '<div class="form-actions"><button id="clear-notifications-button" type="button" class="button button-secondary">Borrar notificaciones</button></div>'
+    : '';
+  content.innerHTML = `<div id="notifications-list">${notificationsLocal.length ? '' : '<p>Cargando notificaciones...</p>'}</div>${buttonHtml}`;
+  renderNotifications();
+  const clearButton = document.getElementById('clear-notifications-button');
+  if (clearButton) clearButton.addEventListener('click', clearNotifications);
+}
+
 function updateUserStatus(connected = true) {
   const el = document.getElementById('user-status');
   const badge = document.getElementById('notif-badge');
   if (!el) return;
-  if (connected) {
+  if (connected && currentUser) {
+    el.textContent = `${currentUser.displayName || currentUser.username} (Conectado)`;
+    el.style.color = 'var(--accent)';
+    showElement(logoutButton, true);
+    if (badge && notificationsLocal.length) badge.classList.remove('hidden');
+  } else if (connected) {
     el.textContent = 'Conectado';
     el.style.color = 'var(--accent)';
+    showElement(logoutButton, false);
     if (badge && notificationsLocal.length) badge.classList.remove('hidden');
   } else {
     el.textContent = 'Desconectado';
     el.style.color = 'var(--muted)';
+    showElement(logoutButton, false);
   }
 }
 
-function init() {
+async function handleLogout() {
+  try {
+    const res = await fetch('/api/auth/logout', {
+      method: 'POST',
+      credentials: 'same-origin',
+    });
+    if (!res.ok) throw new Error('logout failed');
+  } catch (err) {
+    console.error('handleLogout', err);
+  } finally {
+    resetSession();
+    setLaunchSection('login');
+    showScreen('launch');
+    showToast('Sesión cerrada.', 'info');
+  }
+}
+
+async function init() {
   initEvents();
-  setLaunchSection('register');
-  showScreen('launch');
-  updateUserStatus(true);
+  await loadCurrentUser();
+  if (currentUser) {
+    enterDashboard('login', { username: currentUser.displayName || currentUser.username });
+  } else {
+    setLaunchSection('register');
+    showScreen('launch');
+  }
+  updateUserStatus(Boolean(currentUser));
   // Load data from backend
   fetchStats();
   fetchThreads();
